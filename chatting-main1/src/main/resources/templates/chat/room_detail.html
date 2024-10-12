@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>채팅방</title>
+    <link rel="stylesheet" href="/webjars/bootstrap/4.3.1/dist/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        .my-message {
+            text-align: right;
+            background-color: #d4f1ff;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px;
+        }
+
+        .their-message {
+            text-align: left;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px;
+        }
+
+        .read-status {
+            font-size: 0.8em;
+            color: green;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <!-- 채팅방 제목에 상대방 이름 표시 -->
+    <h3 th:text="'채팅방: ' + (${#strings.equals(room.sender, user) ? room.receiver : room.sender})"></h3>
+
+    <div id="messageArea" class="border" style="height: 400px; overflow-y: scroll;">
+
+
+        <!-- 메시지 목록을 불러오기 -->
+        <div th:each="message : ${messages}">
+            <div th:class="${#strings.equals(message.sender, user) ? 'my-message' : 'their-message'}">
+                <strong th:text="${message.sender}"></strong>:
+                <span th:text="${message.message}"></span>
+                <!-- 본인의 메시지일 경우 읽음 여부 표시 -->
+                <span th:if="${#strings.equals(message.sender, user) && message.readYn}" class="read-status">읽음</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <input type="text" id="messageInput" class="form-control" placeholder="메시지 입력">
+    </div>
+    <button class="btn btn-primary" onclick="sendMessage()">전송</button>
+</div>
+
+<script th:inline="javascript">
+    let stompClient = null;
+    const user = /*[[${user}]]*/ 'defaultUser';
+    const roomId = /*[[${room.roomId}]]*/ 'default-room-id';  // 수정된 부분
+
+    function connect() {
+        const socket = new SockJS('/ws-stomp');  // WebSocket 엔드포인트
+        stompClient = Stomp.over(socket);
+
+
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/sub/chat/room/' + roomId, function (message) {
+                showMessage(JSON.parse(message.body));
+            });
+        }, function (error) {
+            console.log('Connection error: ', error);
+        });
+    }
+
+    function sendMessage() {
+        const messageInput = document.getElementById('messageInput').value;
+        // const roomId = /*[[${room.roomId}]]*/ 'default-room-id';  // 수정된 부분
+
+        if (!messageInput) {
+            alert('메시지를 입력해주세요.');
+            return;
+        }
+
+        const message = {
+            roomId: roomId,
+            sender: user,
+            message: messageInput,
+            type: 'TALK'
+        };
+
+        stompClient.send('/pub/chat/message', {}, JSON.stringify(message));
+        document.getElementById('messageInput').value = '';  // 입력창 비우기
+    }
+
+    function showMessage(message) {
+        const messageArea = document.getElementById('messageArea');
+        const newMessage = document.createElement('div');
+        newMessage.className = message.sender === user ? 'my-message' : 'their-message';
+        newMessage.innerHTML = `<strong>${message.sender}</strong>: ${message.message}`;
+        messageArea.appendChild(newMessage);
+        messageArea.scrollTop = messageArea.scrollHeight;  // 스크롤을 가장 아래로
+    }
+
+    connect();
+</script>
+</body>
+</html>
